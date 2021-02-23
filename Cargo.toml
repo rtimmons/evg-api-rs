@@ -1,5 +1,5 @@
 [package]
-name = "evergreen_rs"
+name = "evergreen-api-rs"
 version = "0.1.0"
 authors = ["David Bradford <david.bradford@mongodb.com>"]
 edition = "2018"
@@ -7,8 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-stream = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
-reqwest = { version = "0.10", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
+parse_link_header = "0.2"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 serde_yaml = "0.8"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
