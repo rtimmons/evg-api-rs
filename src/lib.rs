@@ -4,11 +4,9 @@ use futures::stream::Stream;
 use futures::stream::StreamExt;
 use async_stream::stream;
 use models::version::EvgVersion;
+use models::build::EvgBuild;
 use models::{task::EvgTask, test::EvgTest};
-use reqwest::{
-    header::{HeaderMap, HeaderValue, LINK},
-    Client, Response,
-};
+use reqwest::{Client, Response, header::{HeaderMap, HeaderValue, LINK}};
 use serde::Deserialize;
 use std::path::Path;
 use std::{error::Error, fs};
@@ -62,28 +60,34 @@ impl EvgClient {
         )
     }
 
-    pub async fn get_task(&self, task_id: String) -> Result<EvgTask, Box<dyn Error>> {
-        let url = self.build_url("tasks", &task_id);
+    pub async fn get_task(&self, task_id: &str) -> Result<EvgTask, Box<dyn Error>> {
+        let url = self.build_url("tasks", task_id);
+        let response = self.client.get(&url).send().await?;
+        Ok(response.json().await?)
+    }
+
+    pub async fn get_version(&self, version_id: &str) -> Result<EvgVersion, Box<dyn Error>> {
+        let url = self.build_url("versions", version_id);
         println!("S: {}", url);
         let response = self.client.get(&url).send().await?;
         println!("E: {}", url);
         Ok(response.json().await?)
     }
 
-    pub async fn get_version(&self, version_id: String) -> Result<EvgVersion, Box<dyn Error>> {
-        let url = self.build_url("versions", &version_id);
-        println!("S: {}", url);
+    pub async fn get_build(&self, build_id: &str) -> Result<Option<EvgBuild>, Box<dyn Error>> {
+        let url = self.build_url("builds", build_id);
         let response = self.client.get(&url).send().await?;
-        println!("E: {}", url);
-        Ok(response.json().await?)
+        if response.status() == 404 {
+            Ok(None)
+        } else {
+            Ok(Some(response.json().await?))
+        }
     }
 
     pub async fn get_tests(&self, task_id: &str) -> Result<Vec<EvgTest>, Box<dyn Error>> {
         let url = format!("{}/tests", self.build_url("tasks", &task_id));
-        println!("S: {}", url);
         let mut results: Vec<EvgTest> = vec![];
         let mut response = self.client.get(&url).send().await?;
-        println!("E: {}", url);
         loop {
             let next_link = next_link(&response);
             let result_batch: Vec<EvgTest> = response.json().await?;
