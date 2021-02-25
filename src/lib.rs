@@ -1,12 +1,15 @@
 pub mod models;
 
+use async_stream::stream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
-use async_stream::stream;
-use models::version::EvgVersion;
 use models::build::EvgBuild;
+use models::version::EvgVersion;
 use models::{task::EvgTask, test::EvgTest};
-use reqwest::{Client, Response, header::{HeaderMap, HeaderValue, LINK}};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, LINK},
+    Client, Response,
+};
 use serde::Deserialize;
 use std::path::Path;
 use std::{error::Error, fs};
@@ -103,7 +106,10 @@ impl EvgClient {
     }
 
     pub fn stream_versions(&self, project_id: &str) -> impl Stream<Item = EvgVersion> {
-        let url = format!("{}/versions?requester=gitter_request", self.build_url("projects", project_id));
+        let url = format!(
+            "{}/versions?requester=gitter_request",
+            self.build_url("projects", project_id)
+        );
         let client = self.client.clone();
 
         stream! {

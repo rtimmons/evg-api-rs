@@ -15,7 +15,7 @@ pub struct StatusCounts {
 #[derive(Debug, Deserialize)]
 pub struct EvgBuild {
     #[serde(alias = "_id")]
-    pub id: String, 
+    pub id: String,
     pub project_id: String,
     pub create_time: Option<DateTime<Utc>>,
     pub start_time: Option<DateTime<Utc>>,
@@ -35,5 +35,5 @@ pub struct EvgBuild {
     pub predicted_makespan_ms: u64,
     pub actual_makespan_ms: u64,
     pub origin: String,
-    pub status_counts: StatusCounts
+    pub status_counts: StatusCounts,
 }
