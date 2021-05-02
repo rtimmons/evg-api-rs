@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct StatusCounts {
+pub struct BuildStatusCounts {
     pub succeeded: u32,
     pub failed: u32,
     pub started: u32,
@@ -10,6 +10,53 @@ pub struct StatusCounts {
     pub inactivate: Option<u32>,
     pub dispatched: u32,
     pub timed_out: u32,
+}
+
+impl Default for BuildStatusCounts {
+    fn default() -> Self {
+        BuildStatusCounts {
+            succeeded: 0,
+            failed: 0,
+            started: 0,
+            undispatched: 0,
+            inactivate: None,
+            dispatched: 0,
+            timed_out: 0,
+        }
+    }
+}
+
+impl BuildStatusCounts {
+    pub fn new() -> Self {
+        Self {
+            ..Default::default()
+        }
+    }
+
+    pub fn add(&mut self, other: &Self) {
+        self.succeeded += other.succeeded;
+        self.failed += other.failed;
+        self.started += other.started;
+        self.undispatched += other.undispatched;
+        self.dispatched += other.dispatched;
+        self.timed_out += other.timed_out;
+    }
+
+    pub fn total_task_count(&self) -> u32 {
+        self.undispatched + self.dispatched + self.started + self.failed + self.succeeded + self.timed_out
+    }
+
+    pub fn finished_task_count(&self) -> u32 {
+        self.succeeded + self.failed + self.timed_out
+    }
+
+    pub fn pending_task_count(&self) -> u32 {
+        self.started + self.undispatched
+    }
+
+    pub fn completed_task_count(&self) -> u32 {
+        self.failed + self.succeeded + self.timed_out
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,5 +82,5 @@ pub struct EvgBuild {
     pub predicted_makespan_ms: u64,
     pub actual_makespan_ms: u64,
     pub origin: String,
-    pub status_counts: StatusCounts,
+    pub status_counts: BuildStatusCounts,
 }

@@ -71,9 +71,7 @@ impl EvgClient {
 
     pub async fn get_version(&self, version_id: &str) -> Result<EvgVersion, Box<dyn Error>> {
         let url = self.build_url("versions", version_id);
-        println!("S: {}", url);
         let response = self.client.get(&url).send().await?;
-        println!("E: {}", url);
         Ok(response.json().await?)
     }
 
