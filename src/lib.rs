@@ -3,8 +3,8 @@ pub mod models;
 use async_stream::stream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
-use models::{build::EvgBuild, patch::EvgPatch};
 use models::version::EvgVersion;
+use models::{build::EvgBuild, patch::EvgPatch};
 use models::{task::EvgTask, test::EvgTest};
 use reqwest::{
     header::{HeaderMap, HeaderValue, LINK},
@@ -103,11 +103,36 @@ impl EvgClient {
         Ok(results)
     }
 
-    pub async fn stream_user_patches(&self, user_id: &str) -> impl Stream<Item = EvgPatch> {
-        let url = format!(
-            "{}/patches?limit=5",
-            self.build_url("users", user_id)
-        );
+    pub async fn stream_build_tasks(&self, build_id: &str, status: Option<&str>) -> impl Stream<Item = EvgTask> {
+        let mut url = format!("{}/tasks", self.build_url("builds", build_id));
+        if let Some(s) = status {
+            url = format!("{}?status={}", url, s);
+        }
+        let client = self.client.clone();
+
+        stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgTask> = response.json().await.unwrap();
+                for patch in result_batch {
+                    yield patch;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    pub async fn stream_user_patches(&self, user_id: &str, limit: Option<usize>) -> impl Stream<Item = EvgPatch> {
+        let mut url = format!("{}/patches", self.build_url("users", user_id));
+        if let Some(l) = limit {
+            url = format!("{}?limit={}", url, l);
+        }
         let client = self.client.clone();
 
         stream! {

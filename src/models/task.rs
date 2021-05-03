@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EvgTaskArtifact {
     pub name: String,
     pub url: String,
@@ -10,7 +10,7 @@ pub struct EvgTaskArtifact {
     pub ignore_for_fetch: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EvgTaskStatusDetails {
     pub status: String,
     #[serde(alias = "type")]
@@ -19,7 +19,7 @@ pub struct EvgTaskStatusDetails {
     pub timed_out: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EvgTask {
     pub activated: bool,
     pub activated_by: String,

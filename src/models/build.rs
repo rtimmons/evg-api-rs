@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct BuildStatusCounts {
     pub succeeded: u32,
     pub failed: u32,
@@ -43,7 +43,12 @@ impl BuildStatusCounts {
     }
 
     pub fn total_task_count(&self) -> u32 {
-        self.undispatched + self.dispatched + self.started + self.failed + self.succeeded + self.timed_out
+        self.undispatched
+            + self.dispatched
+            + self.started
+            + self.failed
+            + self.succeeded
+            + self.timed_out
     }
 
     pub fn finished_task_count(&self) -> u32 {
@@ -57,9 +62,13 @@ impl BuildStatusCounts {
     pub fn completed_task_count(&self) -> u32 {
         self.failed + self.succeeded + self.timed_out
     }
+
+    pub fn percent_complete(&self) -> f64 {
+        self.finished_task_count() as f64 / self.total_task_count() as f64
+    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct EvgBuild {
     #[serde(alias = "_id")]
     pub id: String,

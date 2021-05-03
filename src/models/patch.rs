@@ -14,6 +14,6 @@ pub struct EvgPatch {
     pub version: String,
     pub status: String,
     pub create_time: DateTime<Utc>,
-    pub start_time: DateTime<Utc>,
+    pub start_time: Option<DateTime<Utc>>,
     pub finish_time: Option<DateTime<Utc>>,
 }
