@@ -153,6 +153,31 @@ impl EvgClient {
         }
     }
 
+    pub async fn stream_project_patches(&self, project_id: &str, limit: Option<usize>) -> impl Stream<Item = EvgPatch> {
+        let mut url = format!("{}/patches", self.build_url("projects", project_id));
+        if let Some(l) = limit {
+            url = format!("{}?limit={}", url, l);
+        }
+        let client = self.client.clone();
+
+        stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgPatch> = response.json().await.unwrap();
+                for patch in result_batch {
+                    yield patch;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
     pub fn stream_versions(&self, project_id: &str) -> impl Stream<Item = EvgVersion> {
         let url = format!(
             "{}/versions?requester=gitter_request",
