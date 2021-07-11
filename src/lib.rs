@@ -3,6 +3,10 @@ pub mod models;
 use async_stream::stream;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
+use models::stats::EvgTaskStats;
+use models::stats::EvgTaskStatsRequest;
+use models::stats::EvgTestStats;
+use models::stats::EvgTestStatsRequest;
 use models::version::EvgVersion;
 use models::{build::EvgBuild, patch::EvgPatch};
 use models::{task::EvgTask, test::EvgTest};
@@ -101,6 +105,19 @@ impl EvgClient {
             }
         }
         Ok(results)
+    }
+
+    pub async fn get_test_stats(&self, project_id: &str, query: &EvgTestStatsRequest) -> Result<Vec<EvgTestStats>, Box<dyn Error>> {
+        let url = format!("{}/test_stats", self.build_url("projects", project_id));
+        let response = self.client.get(&url).query(query).send().await?;
+
+        Ok(response.json().await?)
+    }
+
+    pub async fn get_task_stats(&self, project_id: &str, query: &EvgTaskStatsRequest) -> Result<Vec<EvgTaskStats>, Box<dyn Error>> {
+        let url = format!("{}/task_stats", self.build_url("projects", project_id));
+        let response = self.client.get(&url).query(query).send().await?;
+        Ok(response.json().await?)
     }
 
     pub async fn stream_build_tasks(&self, build_id: &str, status: Option<&str>) -> impl Stream<Item = EvgTask> {
