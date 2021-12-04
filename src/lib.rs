@@ -238,6 +238,24 @@ impl EvgClient {
             }
         }
     }
+
+    pub fn stream_test_log(&self, test: &EvgTest) -> impl Stream<Item = String> {
+        let stream_future = self.client.get(&test.logs.url_raw).send();
+        stream! {
+            let mut stream = stream_future.await.unwrap().bytes_stream();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(bytes) => {
+                        let lines = std::str::from_utf8(&bytes).unwrap().split('\n');
+                        for l in lines {
+                            yield l.to_string();
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
+    }
 }
 
 fn next_link(response: &Response) -> Option<String> {
