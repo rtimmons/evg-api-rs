@@ -25,7 +25,6 @@ pub struct EvergreenConfigFile {
     pub user: String,
     pub api_key: String,
     pub api_server_host: String,
-    ui_server_host: String,
 }
 
 pub fn get_evg_config(path: &Path) -> EvergreenConfigFile {
