@@ -6,9 +6,9 @@ pub struct TestLog {
     pub url: String,
     pub line_num: u32,
     pub url_raw: String,
-    pub log_id: String,
-    pub url_raw_display: String,
-    pub url_html_display: String,
+    pub log_id: Option<String>,
+    pub url_raw_display: Option<String>,
+    pub url_html_display: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,6 +1,6 @@
 [package]
 name = "evg-api-rs"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["David Bradford <david.bradford@mongodb.com>"]
 edition = "2018"
 

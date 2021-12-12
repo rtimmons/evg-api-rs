@@ -28,10 +28,8 @@ pub struct EvergreenConfigFile {
     ui_server_host: String,
 }
 
-pub fn get_evg_config() -> EvergreenConfigFile {
-    let home = std::env::var("HOME").unwrap();
-    let path = format!("{}/{}", home, DEFAULT_CONFIG_FILE);
-    let contents = fs::read_to_string(Path::new(&path)).expect("Could not find config");
+pub fn get_evg_config(path: &Path) -> EvergreenConfigFile {
+    let contents = fs::read_to_string(&path).expect("Could not find config");
     let evg_config: EvergreenConfigFile =
         serde_yaml::from_str(&contents).expect("Could not read config");
     evg_config
@@ -45,8 +43,13 @@ pub struct EvgClient {
 
 impl EvgClient {
     pub fn new() -> Result<EvgClient, Box<dyn Error>> {
-        let evg_config = get_evg_config();
+        let home = std::env::var("HOME").unwrap();
+        let path = format!("{}/{}", home, DEFAULT_CONFIG_FILE);
+        Self::from_file(&Path::new(&path))
+    }
 
+    pub fn from_file(config_file: &Path) -> Result<EvgClient, Box<dyn Error>> {
+        let evg_config = get_evg_config(config_file);
         let mut headers = HeaderMap::new();
         headers.insert("Api-User", HeaderValue::from_str(&evg_config.user).unwrap());
         headers.insert(
@@ -107,20 +110,32 @@ impl EvgClient {
         Ok(results)
     }
 
-    pub async fn get_test_stats(&self, project_id: &str, query: &EvgTestStatsRequest) -> Result<Vec<EvgTestStats>, Box<dyn Error>> {
+    pub async fn get_test_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTestStatsRequest,
+    ) -> Result<Vec<EvgTestStats>, Box<dyn Error>> {
         let url = format!("{}/test_stats", self.build_url("projects", project_id));
         let response = self.client.get(&url).query(query).send().await?;
 
         Ok(response.json().await?)
     }
 
-    pub async fn get_task_stats(&self, project_id: &str, query: &EvgTaskStatsRequest) -> Result<Vec<EvgTaskStats>, Box<dyn Error>> {
+    pub async fn get_task_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTaskStatsRequest,
+    ) -> Result<Vec<EvgTaskStats>, Box<dyn Error>> {
         let url = format!("{}/task_stats", self.build_url("projects", project_id));
         let response = self.client.get(&url).query(query).send().await?;
         Ok(response.json().await?)
     }
 
-    pub async fn stream_build_tasks(&self, build_id: &str, status: Option<&str>) -> impl Stream<Item = EvgTask> {
+    pub async fn stream_build_tasks(
+        &self,
+        build_id: &str,
+        status: Option<&str>,
+    ) -> impl Stream<Item = EvgTask> {
         let mut url = format!("{}/tasks", self.build_url("builds", build_id));
         if let Some(s) = status {
             url = format!("{}?status={}", url, s);
@@ -145,7 +160,11 @@ impl EvgClient {
         }
     }
 
-    pub async fn stream_user_patches(&self, user_id: &str, limit: Option<usize>) -> impl Stream<Item = EvgPatch> {
+    pub async fn stream_user_patches(
+        &self,
+        user_id: &str,
+        limit: Option<usize>,
+    ) -> impl Stream<Item = EvgPatch> {
         let mut url = format!("{}/patches", self.build_url("users", user_id));
         if let Some(l) = limit {
             url = format!("{}?limit={}", url, l);
@@ -170,7 +189,11 @@ impl EvgClient {
         }
     }
 
-    pub async fn stream_project_patches(&self, project_id: &str, limit: Option<usize>) -> impl Stream<Item = EvgPatch> {
+    pub async fn stream_project_patches(
+        &self,
+        project_id: &str,
+        limit: Option<usize>,
+    ) -> impl Stream<Item = EvgPatch> {
         let mut url = format!("{}/patches", self.build_url("projects", project_id));
         if let Some(l) = limit {
             url = format!("{}?limit={}", url, l);
