@@ -1,6 +1,7 @@
 pub mod models;
 
 use async_stream::stream;
+use async_trait::async_trait;
 use futures::stream::Stream;
 use futures::stream::StreamExt;
 use models::stats::EvgTaskStats;
@@ -21,32 +22,58 @@ use std::{error::Error, fs};
 const DEFAULT_CONFIG_FILE: &str = ".evergreen.yml";
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct EvergreenConfigFile {
+struct EvergreenConfigFile {
     pub user: String,
     pub api_key: String,
     pub api_server_host: String,
 }
 
-pub fn get_evg_config(path: &Path) -> EvergreenConfigFile {
+fn get_evg_config(path: &Path) -> EvergreenConfigFile {
     let contents = fs::read_to_string(&path).expect("Could not find config");
     let evg_config: EvergreenConfigFile =
         serde_yaml::from_str(&contents).expect("Could not read config");
     evg_config
 }
 
+#[async_trait]
+pub trait EvgApiClient: Sync + Send {
+    /// Get details about the given task.
+    async fn get_task(&self, task_id: &str) -> Result<EvgTask, Box<dyn Error>>;
+    /// Get details about the given version.
+    async fn get_version(&self, version_id: &str) -> Result<EvgVersion, Box<dyn Error>>;
+    /// Get details about the given build.
+    async fn get_build(&self, build_id: &str) -> Result<Option<EvgBuild>, Box<dyn Error>>;
+    /// Get the tests belonging to the given task.
+    async fn get_tests(&self, task_id: &str) -> Result<Vec<EvgTest>, Box<dyn Error>>;
+    /// Get test stats for the given query.
+    async fn get_test_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTestStatsRequest,
+    ) -> Result<Vec<EvgTestStats>, Box<dyn Error>>;
+    /// Get task stats for the given query.
+    async fn get_task_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTaskStatsRequest,
+    ) -> Result<Vec<EvgTaskStats>, Box<dyn Error>>;
+}
+
 #[derive(Clone)]
 pub struct EvgClient {
-    pub evg_config: EvergreenConfigFile,
-    pub client: Client,
+    evg_config: EvergreenConfigFile,
+    client: Client,
 }
 
 impl EvgClient {
+    /// Create a new EvgClient based on the default evergreen auth file location (~/.evergreen.yml).
     pub fn new() -> Result<EvgClient, Box<dyn Error>> {
         let home = std::env::var("HOME").unwrap();
         let path = format!("{}/{}", home, DEFAULT_CONFIG_FILE);
-        Self::from_file(&Path::new(&path))
+        Self::from_file(Path::new(&path))
     }
 
+    /// Create a new EvgClient based on the evergreen auth file at the provided location.
     pub fn from_file(config_file: &Path) -> Result<EvgClient, Box<dyn Error>> {
         let evg_config = get_evg_config(config_file);
         let mut headers = HeaderMap::new();
@@ -67,67 +94,6 @@ impl EvgClient {
             "{}/rest/v2/{}/{}",
             self.evg_config.api_server_host, endpoint, arg
         )
-    }
-
-    pub async fn get_task(&self, task_id: &str) -> Result<EvgTask, Box<dyn Error>> {
-        let url = self.build_url("tasks", task_id);
-        let response = self.client.get(&url).send().await?;
-        Ok(response.json().await?)
-    }
-
-    pub async fn get_version(&self, version_id: &str) -> Result<EvgVersion, Box<dyn Error>> {
-        let url = self.build_url("versions", version_id);
-        let response = self.client.get(&url).send().await?;
-        Ok(response.json().await?)
-    }
-
-    pub async fn get_build(&self, build_id: &str) -> Result<Option<EvgBuild>, Box<dyn Error>> {
-        let url = self.build_url("builds", build_id);
-        let response = self.client.get(&url).send().await?;
-        if response.status() == 404 {
-            Ok(None)
-        } else {
-            Ok(Some(response.json().await?))
-        }
-    }
-
-    pub async fn get_tests(&self, task_id: &str) -> Result<Vec<EvgTest>, Box<dyn Error>> {
-        let url = format!("{}/tests", self.build_url("tasks", &task_id));
-        let mut results: Vec<EvgTest> = vec![];
-        let mut response = self.client.get(&url).send().await?;
-        loop {
-            let next_link = next_link(&response);
-            let result_batch: Vec<EvgTest> = response.json().await?;
-            results.extend(result_batch);
-
-            if let Some(next) = next_link {
-                response = self.client.get(&next).send().await?;
-            } else {
-                break;
-            }
-        }
-        Ok(results)
-    }
-
-    pub async fn get_test_stats(
-        &self,
-        project_id: &str,
-        query: &EvgTestStatsRequest,
-    ) -> Result<Vec<EvgTestStats>, Box<dyn Error>> {
-        let url = format!("{}/test_stats", self.build_url("projects", project_id));
-        let response = self.client.get(&url).query(query).send().await?;
-
-        Ok(response.json().await?)
-    }
-
-    pub async fn get_task_stats(
-        &self,
-        project_id: &str,
-        query: &EvgTaskStatsRequest,
-    ) -> Result<Vec<EvgTaskStats>, Box<dyn Error>> {
-        let url = format!("{}/task_stats", self.build_url("projects", project_id));
-        let response = self.client.get(&url).query(query).send().await?;
-        Ok(response.json().await?)
     }
 
     pub async fn stream_build_tasks(
@@ -280,14 +246,122 @@ impl EvgClient {
     }
 }
 
-fn next_link(response: &Response) -> Option<String> {
-    if let Some(header) = response.headers().get(LINK) {
-        let links = parse_link_header::parse(&header.to_str().unwrap()).unwrap();
-        let next_link = links.get(&Some("next".to_string()));
+#[async_trait]
+impl EvgApiClient for EvgClient {
+    async fn get_task(&self, task_id: &str) -> Result<EvgTask, Box<dyn Error>> {
+        let url = self.build_url("tasks", task_id);
+        let response = self.client.get(&url).send().await?;
+        Ok(response.json().await?)
+    }
 
-        if let Some(link) = next_link {
-            return Some(link.uri.to_string());
+    async fn get_version(&self, version_id: &str) -> Result<EvgVersion, Box<dyn Error>> {
+        let url = self.build_url("versions", version_id);
+        let response = self.client.get(&url).send().await?;
+        Ok(response.json().await?)
+    }
+
+    async fn get_build(&self, build_id: &str) -> Result<Option<EvgBuild>, Box<dyn Error>> {
+        let url = self.build_url("builds", build_id);
+        let response = self.client.get(&url).send().await?;
+        if response.status() == 404 {
+            Ok(None)
+        } else {
+            Ok(Some(response.json().await?))
         }
     }
+
+    async fn get_tests(&self, task_id: &str) -> Result<Vec<EvgTest>, Box<dyn Error>> {
+        let url = format!("{}/tests", self.build_url("tasks", task_id));
+        let mut results: Vec<EvgTest> = vec![];
+        let mut response = self.client.get(&url).send().await?;
+        loop {
+            let next_link = next_link(&response);
+            let result_batch: Vec<EvgTest> = response.json().await?;
+            results.extend(result_batch);
+
+            if let Some(next) = next_link {
+                response = self.client.get(&next).send().await?;
+            } else {
+                break;
+            }
+        }
+        Ok(results)
+    }
+
+    async fn get_test_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTestStatsRequest,
+    ) -> Result<Vec<EvgTestStats>, Box<dyn Error>> {
+        let url = format!("{}/test_stats", self.build_url("projects", project_id));
+        let response = self.client.get(&url).query(query).send().await?;
+
+        Ok(response.json().await?)
+    }
+
+    async fn get_task_stats(
+        &self,
+        project_id: &str,
+        query: &EvgTaskStatsRequest,
+    ) -> Result<Vec<EvgTaskStats>, Box<dyn Error>> {
+        let url = format!("{}/task_stats", self.build_url("projects", project_id));
+        let response = self.client.get(&url).query(query).send().await?;
+        Ok(response.json().await?)
+    }
+}
+
+fn next_link(response: &Response) -> Option<String> {
+    if let Some(header) = response.headers().get(LINK) {
+        let links = parse_link_header::parse(header.to_str().unwrap()).unwrap();
+        let next_link = links.get(&Some("next".to_string()));
+
+        return next_link.map(|l| l.uri.to_string());
+    }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::response::Builder;
+    use reqwest::Response;
+
+    #[test]
+    fn test_next_link_should_return_link_if_it_exists() {
+        let response = Response::from(Builder::new()
+            .status(200)
+            .header(LINK, String::from("<https://evergreen.mongodb.com/rest/v2/tasks/task_id/tests?limit=100&start_at=abc123>; rel=\"next\""))
+            .body("foo")
+            .unwrap());
+
+        let next_link = next_link(&response);
+
+        assert_eq!(next_link, Some(String::from("https://evergreen.mongodb.com/rest/v2/tasks/task_id/tests?limit=100&start_at=abc123")));
+    }
+
+    #[test]
+    fn test_next_link_should_return_none_if_no_next() {
+        let response = Response::from(Builder::new()
+            .status(200)
+            .header(LINK, String::from("<https://evergreen.mongodb.com/rest/v2/tasks/task_id/tests?limit=100&start_at=abc123>; rel=\"other\""))
+            .body("foo")
+            .unwrap());
+
+        let next_link = next_link(&response);
+
+        assert_eq!(next_link, None);
+    }
+
+    #[test]
+    fn test_next_link_should_return_none_if_no_link_header() {
+        let response = Response::from(Builder::new()
+            .status(200)
+            .header("something", String::from("<https://evergreen.mongodb.com/rest/v2/tasks/task_id/tests?limit=100&start_at=abc123>; rel=\"other\""))
+            .body("foo")
+            .unwrap());
+
+        let next_link = next_link(&response);
+
+        assert_eq!(next_link, None);
+    }
 }

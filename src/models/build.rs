@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct BuildStatusCounts {
     pub succeeded: u32,
     pub failed: u32,
@@ -10,20 +10,6 @@ pub struct BuildStatusCounts {
     pub inactivate: Option<u32>,
     pub dispatched: u32,
     pub timed_out: u32,
-}
-
-impl Default for BuildStatusCounts {
-    fn default() -> Self {
-        BuildStatusCounts {
-            succeeded: 0,
-            failed: 0,
-            started: 0,
-            undispatched: 0,
-            inactivate: None,
-            dispatched: 0,
-            timed_out: 0,
-        }
-    }
 }
 
 impl BuildStatusCounts {
