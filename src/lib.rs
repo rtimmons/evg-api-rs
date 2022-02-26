@@ -17,7 +17,10 @@ use reqwest::{
 };
 use serde::Deserialize;
 use std::path::Path;
+use std::pin::Pin;
 use std::{error::Error, fs};
+
+type BoxedStream<T> = Pin<Box<dyn Stream<Item = T>>>;
 
 const DEFAULT_CONFIG_FILE: &str = ".evergreen.yml";
 
@@ -28,11 +31,10 @@ struct EvergreenConfigFile {
     pub api_server_host: String,
 }
 
-fn get_evg_config(path: &Path) -> EvergreenConfigFile {
-    let contents = fs::read_to_string(&path).expect("Could not find config");
-    let evg_config: EvergreenConfigFile =
-        serde_yaml::from_str(&contents).expect("Could not read config");
-    evg_config
+fn get_evg_config(path: &Path) -> Result<EvergreenConfigFile, Box<dyn Error>> {
+    let contents = fs::read_to_string(&path)?;
+    let evg_config: EvergreenConfigFile = serde_yaml::from_str(&contents)?;
+    Ok(evg_config)
 }
 
 #[async_trait]
@@ -57,6 +59,22 @@ pub trait EvgApiClient: Sync + Send {
         project_id: &str,
         query: &EvgTaskStatsRequest,
     ) -> Result<Vec<EvgTaskStats>, Box<dyn Error>>;
+    /// Stream version of an evergreen project.
+    fn stream_versions(&self, project_id: &str) -> BoxedStream<EvgVersion>;
+    /// Stream user patches of an evergreen project.
+    fn stream_user_patches(&self, user_id: &str, limit: Option<usize>) -> BoxedStream<EvgPatch>;
+    /// Stream patches of an evergreen project.
+    fn stream_project_patches(
+        &self,
+        project_id: &str,
+        limit: Option<usize>,
+    ) -> BoxedStream<EvgPatch>;
+    /// Stream tasks of an evergreen build.
+    fn stream_build_tasks(&self, build_id: &str, status: Option<&str>) -> BoxedStream<EvgTask>;
+    /// Stream the contents of a task level log.
+    fn stream_log(&self, task: &EvgTask, log_name: &str) -> BoxedStream<String>;
+    /// Stream the contents of a test level log.
+    fn stream_test_log(&self, test: &EvgTest) -> BoxedStream<String>;
 }
 
 #[derive(Clone)]
@@ -68,20 +86,17 @@ pub struct EvgClient {
 impl EvgClient {
     /// Create a new EvgClient based on the default evergreen auth file location (~/.evergreen.yml).
     pub fn new() -> Result<EvgClient, Box<dyn Error>> {
-        let home = std::env::var("HOME").unwrap();
+        let home = std::env::var("HOME")?;
         let path = format!("{}/{}", home, DEFAULT_CONFIG_FILE);
         Self::from_file(Path::new(&path))
     }
 
     /// Create a new EvgClient based on the evergreen auth file at the provided location.
     pub fn from_file(config_file: &Path) -> Result<EvgClient, Box<dyn Error>> {
-        let evg_config = get_evg_config(config_file);
+        let evg_config = get_evg_config(config_file)?;
         let mut headers = HeaderMap::new();
-        headers.insert("Api-User", HeaderValue::from_str(&evg_config.user).unwrap());
-        headers.insert(
-            "Api-Key",
-            HeaderValue::from_str(&evg_config.api_key).unwrap(),
-        );
+        headers.insert("Api-User", HeaderValue::from_str(&evg_config.user)?);
+        headers.insert("Api-Key", HeaderValue::from_str(&evg_config.api_key)?);
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()?;
@@ -94,155 +109,6 @@ impl EvgClient {
             "{}/rest/v2/{}/{}",
             self.evg_config.api_server_host, endpoint, arg
         )
-    }
-
-    pub async fn stream_build_tasks(
-        &self,
-        build_id: &str,
-        status: Option<&str>,
-    ) -> impl Stream<Item = EvgTask> {
-        let mut url = format!("{}/tasks", self.build_url("builds", build_id));
-        if let Some(s) = status {
-            url = format!("{}?status={}", url, s);
-        }
-        let client = self.client.clone();
-
-        stream! {
-            let mut response = client.get(&url).send().await.unwrap();
-            loop {
-                let next_link = next_link(&response);
-                let result_batch: Vec<EvgTask> = response.json().await.unwrap();
-                for patch in result_batch {
-                    yield patch;
-                }
-
-                if let Some(next) = next_link {
-                    response = client.get(&next).send().await.unwrap();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    pub async fn stream_user_patches(
-        &self,
-        user_id: &str,
-        limit: Option<usize>,
-    ) -> impl Stream<Item = EvgPatch> {
-        let mut url = format!("{}/patches", self.build_url("users", user_id));
-        if let Some(l) = limit {
-            url = format!("{}?limit={}", url, l);
-        }
-        let client = self.client.clone();
-
-        stream! {
-            let mut response = client.get(&url).send().await.unwrap();
-            loop {
-                let next_link = next_link(&response);
-                let result_batch: Vec<EvgPatch> = response.json().await.unwrap();
-                for patch in result_batch {
-                    yield patch;
-                }
-
-                if let Some(next) = next_link {
-                    response = client.get(&next).send().await.unwrap();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    pub async fn stream_project_patches(
-        &self,
-        project_id: &str,
-        limit: Option<usize>,
-    ) -> impl Stream<Item = EvgPatch> {
-        let mut url = format!("{}/patches", self.build_url("projects", project_id));
-        if let Some(l) = limit {
-            url = format!("{}?limit={}", url, l);
-        }
-        let client = self.client.clone();
-
-        stream! {
-            let mut response = client.get(&url).send().await.unwrap();
-            loop {
-                let next_link = next_link(&response);
-                let result_batch: Vec<EvgPatch> = response.json().await.unwrap();
-                for patch in result_batch {
-                    yield patch;
-                }
-
-                if let Some(next) = next_link {
-                    response = client.get(&next).send().await.unwrap();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    pub fn stream_versions(&self, project_id: &str) -> impl Stream<Item = EvgVersion> {
-        let url = format!(
-            "{}/versions?requester=gitter_request",
-            self.build_url("projects", project_id)
-        );
-        let client = self.client.clone();
-
-        stream! {
-            let mut response = client.get(&url).send().await.unwrap();
-            loop {
-                let next_link = next_link(&response);
-                let result_batch: Vec<EvgVersion> = response.json().await.unwrap();
-                for version in result_batch {
-                    yield version;
-                }
-
-                if let Some(next) = next_link {
-                    response = client.get(&next).send().await.unwrap();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    pub fn stream_log(&self, task: &EvgTask, log_name: &str) -> impl Stream<Item = String> {
-        let task_log = format!("{}&text=true", task.logs.get(log_name).unwrap());
-        let stream_future = self.client.get(&task_log).send();
-        stream! {
-            let mut stream = stream_future.await.unwrap().bytes_stream();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(bytes) => {
-                        let lines = std::str::from_utf8(&bytes).unwrap().split('\n');
-                        for l in lines {
-                            yield l.to_string();
-                        }
-                    }
-                    _ => break,
-                }
-            }
-        }
-    }
-
-    pub fn stream_test_log(&self, test: &EvgTest) -> impl Stream<Item = String> {
-        let stream_future = self.client.get(&test.logs.url_raw).send();
-        stream! {
-            let mut stream = stream_future.await.unwrap().bytes_stream();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(bytes) => {
-                        let lines = std::str::from_utf8(&bytes).unwrap().split('\n');
-                        for l in lines {
-                            yield l.to_string();
-                        }
-                    }
-                    _ => break,
-                }
-            }
-        }
     }
 }
 
@@ -307,6 +173,148 @@ impl EvgApiClient for EvgClient {
         let url = format!("{}/task_stats", self.build_url("projects", project_id));
         let response = self.client.get(&url).query(query).send().await?;
         Ok(response.json().await?)
+    }
+
+    fn stream_versions(&self, project_id: &str) -> BoxedStream<EvgVersion> {
+        let url = format!(
+            "{}/versions?requester=gitter_request",
+            self.build_url("projects", project_id)
+        );
+        let client = self.client.clone();
+
+        Box::pin(stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgVersion> = response.json().await.unwrap();
+                for version in result_batch {
+                    yield version;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    fn stream_user_patches(&self, user_id: &str, limit: Option<usize>) -> BoxedStream<EvgPatch> {
+        let mut url = format!("{}/patches", self.build_url("users", user_id));
+        if let Some(l) = limit {
+            url = format!("{}?limit={}", url, l);
+        }
+        let client = self.client.clone();
+
+        Box::pin(stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgPatch> = response.json().await.unwrap();
+                for patch in result_batch {
+                    yield patch;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    fn stream_project_patches(
+        &self,
+        project_id: &str,
+        limit: Option<usize>,
+    ) -> BoxedStream<EvgPatch> {
+        let mut url = format!("{}/patches", self.build_url("projects", project_id));
+        if let Some(l) = limit {
+            url = format!("{}?limit={}", url, l);
+        }
+        let client = self.client.clone();
+
+        Box::pin(stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgPatch> = response.json().await.unwrap();
+                for patch in result_batch {
+                    yield patch;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    fn stream_build_tasks(&self, build_id: &str, status: Option<&str>) -> BoxedStream<EvgTask> {
+        let mut url = format!("{}/tasks", self.build_url("builds", build_id));
+        if let Some(s) = status {
+            url = format!("{}?status={}", url, s);
+        }
+        let client = self.client.clone();
+
+        Box::pin(stream! {
+            let mut response = client.get(&url).send().await.unwrap();
+            loop {
+                let next_link = next_link(&response);
+                let result_batch: Vec<EvgTask> = response.json().await.unwrap();
+                for patch in result_batch {
+                    yield patch;
+                }
+
+                if let Some(next) = next_link {
+                    response = client.get(&next).send().await.unwrap();
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+
+    fn stream_log(&self, task: &EvgTask, log_name: &str) -> BoxedStream<String> {
+        let task_log = format!("{}&text=true", task.logs.get(log_name).unwrap());
+        let stream_future = self.client.get(&task_log).send();
+        Box::pin(stream! {
+            let mut stream = stream_future.await.unwrap().bytes_stream();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(bytes) => {
+                        let lines = std::str::from_utf8(&bytes).unwrap().split('\n');
+                        for l in lines {
+                            yield l.to_string();
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        })
+    }
+
+    fn stream_test_log(&self, test: &EvgTest) -> BoxedStream<String> {
+        let stream_future = self.client.get(&test.logs.url_raw).send();
+
+        Box::pin(stream! {
+            let mut stream = stream_future.await.unwrap().bytes_stream();
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(bytes) => {
+                        let lines = std::str::from_utf8(&bytes).unwrap().split('\n');
+                        for l in lines {
+                            yield l.to_string();
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        })
     }
 }
 
