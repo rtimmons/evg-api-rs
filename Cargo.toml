@@ -1,9 +1,11 @@
 [package]
 name = "evg-api-rs"
+description = "Client for accessing the Evergreen API"
 version = "0.2.0"
 repository = "https://github.com/dbradf/evg-api-rs"
 authors = ["David Bradford <david.bradford@mongodb.com>"]
 edition = "2018"
+license = "Apache-2.0"
 
 [dependencies]
 async-stream = "0.3"
