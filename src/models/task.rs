@@ -46,7 +46,7 @@ pub struct EvgTask {
     pub order: u64,
     pub project_id: String,
     pub priority: u32,
-    pub restarts: u32,
+    pub restarts: Option<u32>,
     pub revision: String,
     pub scheduled_time: Option<DateTime<Utc>>,
     pub start_time: Option<DateTime<Utc>>,

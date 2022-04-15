@@ -20,8 +20,8 @@ use std::path::Path;
 use std::pin::Pin;
 use std::{error::Error, fs};
 
-type BoxedStream<T> = Pin<Box<dyn Stream<Item = T>>>;
-type EvgError = Box<dyn Error + Sync + Send>;
+pub type BoxedStream<T> = Pin<Box<dyn Stream<Item = T>>>;
+pub type EvgError = Box<dyn Error + Sync + Send>;
 
 const DEFAULT_CONFIG_FILE: &str = ".evergreen.yml";
 
