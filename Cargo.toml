@@ -1,7 +1,7 @@
 [package]
 name = "evg-api-rs"
 description = "Client for accessing the Evergreen API"
-version = "0.2.2"
+version = "0.2.3"
 repository = "https://github.com/dbradf/evg-api-rs"
 authors = ["David Bradford <david.bradford@mongodb.com>"]
 edition = "2018"

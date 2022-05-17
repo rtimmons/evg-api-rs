@@ -4,10 +4,12 @@ use serde::{Deserialize, Serialize};
 pub struct EvgTestStatsRequest {
     pub after_date: String,
     pub before_date: String,
-    pub group_num_days: u64,
-    pub variants: String,
-    pub tasks: String,
-    pub tests: Option<String>,
+    pub group_days: bool,
+    pub group_by_test: bool,
+    pub variant: String,
+    pub task_name: String,
+    pub test_name: Option<String>,
+    pub presto: bool,
 }
 
 impl Default for EvgTestStatsRequest {
@@ -15,10 +17,12 @@ impl Default for EvgTestStatsRequest {
         Self {
             after_date: String::from(""),
             before_date: String::from(""),
-            group_num_days: 1,
-            variants: String::from(""),
-            tasks: String::from(""),
-            tests: None,
+            group_days: false,
+            group_by_test: false,
+            variant: String::from(""),
+            task_name: String::from(""),
+            test_name: None,
+            presto: false,
         }
     }
 }

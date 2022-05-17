@@ -106,10 +106,12 @@ impl EvgClient {
     }
 
     fn build_url(&self, endpoint: &str, arg: &str) -> String {
-        format!(
+        let out = format!(
             "{}/rest/v2/{}/{}",
             self.evg_config.api_server_host, endpoint, arg
-        )
+        );
+        print!("Ryan: {}", out);
+        return out;
     }
 }
 
